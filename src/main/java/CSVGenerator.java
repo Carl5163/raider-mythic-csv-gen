@@ -1,3 +1,4 @@
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -10,6 +11,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.csv.CSVPrinter;
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.ChartUtils;
+import org.jfree.chart.JFreeChart;
+import org.jfree.data.xy.XYSeries;
+import org.jfree.data.xy.XYSeriesCollection;
 import org.apache.commons.csv.CSVFormat;
 
 import com.google.gson.Gson;
@@ -19,7 +25,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 
-class CSVGenerator{
+class CSVGenerator {
 	
 	String authToken = "";
 	
@@ -28,10 +34,23 @@ class CSVGenerator{
 	public CSVGenerator(String guildRealm, String guildSlug) throws Exception {
 
 		List<Profile> profiles = getProfiles(guildRealm, guildSlug);
-		convertToCSV(profiles);
+		XYSeriesCollection dataset = convertToCSV(profiles);
+		
+		JFreeChart scatterPlot = ChartFactory.createScatterPlot(
+            "Bonus per Percent Remaining", // Chart title
+            "Percent Remaining", // X-Axis Label
+            "Bonus", // Y-Axis Label
+            dataset // Dataset for the Chart
+        );
+        ChartUtils.saveChartAsPNG(new File("scatterplot.png"), scatterPlot, 600, 400);
+
 	}
 	
-	public void convertToCSV(List<Profile> data) throws IOException {
+	public XYSeriesCollection convertToCSV(List<Profile> data) throws IOException {
+		XYSeriesCollection dataset = new XYSeriesCollection();
+		XYSeries timed = new XYSeries("Timed"); 
+		XYSeries untimed = new XYSeries("Untimed"); 
+		
 		System.out.println("Writing File");
 	    FileWriter out = new FileWriter(CSV_FILE_NAME);
 	    try (CSVPrinter printer = new CSVPrinter(out, CSVFormat.DEFAULT
@@ -40,9 +59,23 @@ class CSVGenerator{
 	        	try {
 		        	for(Profile.Key k : profile.mythic_plus_best_runs) {
 		        		printer.printRecord(k.mythic_level, k.score, k.par_time_ms, k.clear_time_ms, ((double)k.par_time_ms - (double)k.clear_time_ms)/(double)k.par_time_ms, k.score-BaseScores.get(k.mythic_level));
+		        		if(k.score-BaseScores.get(k.mythic_level) < 0) {
+		        			if(k.score-BaseScores.get(k.mythic_level) > -15) {
+		        				untimed.add(((double)k.par_time_ms-(double)k.clear_time_ms)/(double)k.par_time_ms, k.score-BaseScores.get(k.mythic_level));
+		        			}
+		        		} else {
+		        			timed.add(((double)k.par_time_ms-(double)k.clear_time_ms)/(double)k.par_time_ms, k.score-BaseScores.get(k.mythic_level));
+		        		}
 		        	}
 		        	for(Profile.Key k : profile.mythic_plus_alternate_runs) {
 		        		printer.printRecord(k.mythic_level, k.score, k.par_time_ms, k.clear_time_ms, ((double)k.par_time_ms - (double)k.clear_time_ms)/(double)k.par_time_ms, k.score-BaseScores.get(k.mythic_level));
+		        		if(k.score-BaseScores.get(k.mythic_level) < 0) {
+		        			if(k.score-BaseScores.get(k.mythic_level) > -15) {
+		        				untimed.add(((double)k.par_time_ms-(double)k.clear_time_ms)/(double)k.par_time_ms, k.score-BaseScores.get(k.mythic_level));
+		        			}
+		        		} else {
+		        			timed.add(((double)k.par_time_ms-(double)k.clear_time_ms)/(double)k.par_time_ms, k.score-BaseScores.get(k.mythic_level));
+		        		}
 		        	}
 	        	} catch(IOException e) {
 	        		e.printStackTrace();
@@ -50,6 +83,9 @@ class CSVGenerator{
 	        });
 	    }
 	    out.close();
+	    dataset.addSeries(timed);
+	    dataset.addSeries(untimed);
+	    return dataset;
 	}
 	public List<Profile> getProfiles(String guildRealm, String guildSlug) {
 
